@@ -1,5 +1,11 @@
 # lab-bigdata — «Анализ больших данных» на R / RStudio
 
+[![R labs CI](https://github.com/Kennurken/lab-bigdata/actions/workflows/r-labs.yml/badge.svg)](https://github.com/Kennurken/lab-bigdata/actions/workflows/r-labs.yml)
+![Windows](https://img.shields.io/badge/Windows-15%2F15%20labs%20in%20CI-0078D6?logo=windows&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-15%2F15%20labs%20in%20CI-FCC624?logo=linux&logoColor=black)
+![macOS](https://img.shields.io/badge/macOS-15%2F15%20labs%20in%20CI-000000?logo=apple&logoColor=white)
+![R](https://img.shields.io/badge/R-4.6-276DC3?logo=r&logoColor=white)
+
 15 лабораторных работ: от основ R до Spark и машинного обучения. Код — `labNN.R`, результат запуска — `output.txt`, скриншоты — `screenshots/`, текст отчёта — `ЕСЕП.md` (на казахском).
 
 | № | Папка | Тема | Что нужно кроме R-пакетов |
@@ -26,10 +32,16 @@
 
 | Среда | Статус |
 |-------|--------|
-| **macOS 27 (Apple Silicon), R 4.6.1, RStudio** | ✅ все 15 лаб выполнены без ошибок; лабы 5, 12, 13 дополнительно перепроверены через `run_lab.R` после правок переносимости |
-| **Windows 10/11, Linux** | ⚠️ **не проверялось.** Код сделан переносимым (убраны macOS-пути, для `mclapply` добавлен запасной вариант), но реально на этих системах не запускался. Инструкции ниже — по документации R, sparklyr и MongoDB |
+| **macOS 27 (Apple Silicon), R 4.6.1, RStudio** (локально) | ✅ все 15 лаб выполнены без ошибок |
+| **CI: Windows, Linux, macOS** (GitHub Actions, `windows-latest` / `ubuntu-latest` / `macos-latest`, актуальный R release) | ✅ при каждом пуше выполняются **все 15 лаб** через `run_lab.R`, включая MongoDB (лаба 10) и Spark (лаба 13). Workflow: [`.github/workflows/r-labs.yml`](.github/workflows/r-labs.yml) |
 
-Тестировалось на версиях пакетов: `dplyr` 1.2.1, `ggplot2` 4.0.3, `data.table` 1.18.6.1, `DBI` 1.3.0, `RSQLite` 3.53.3, `mongolite` 4.1.0, `sparklyr` 1.9.5, `nycflights13` 1.0.2, `readxl` 1.5.0.1, `writexl` 2.0.1, `jsonlite` 2.0.0, `future` 1.76.0, `randomForest` 4.7-1.2, `rpart` 4.1.27, `tidyr` 1.3.2, `readr` 2.2.0. Более новые и старые версии, скорее всего, подойдут, но не проверялись.
+Что CI нашёл и что уже учтено:
+
+- **Windows, лаба 13:** Spark требует **Visual C++ 2010 SP1 Redistributable** и **`winutils.exe`** — оба шага есть в CI и описаны в разделе 2.
+- **Windows, лаба 12:** `mclapply` многоядерно не работает — скрипт выполняет эти шаги последовательно.
+- **macOS-раннер, лаба 13:** один раз Spark не успел стартовать (`ignoring SIGPIPE signal` в `spark_connect`) и прошёл при повторе — это нехватка памяти на слабой машине (драйвер просит 4 ГБ), см. «Частые проблемы».
+
+Тестировалось на версиях пакетов: `dplyr` 1.2.1, `ggplot2` 4.0.3, `data.table` 1.18.6.1, `DBI` 1.3.0, `RSQLite` 3.53.3, `mongolite` 4.1.0, `sparklyr` 1.9.5, `nycflights13` 1.0.2, `readxl` 1.5.0.1, `writexl` 2.0.1, `jsonlite` 2.0.0, `future` 1.76.0, `randomForest` 4.7-1.2, `rpart` 4.1.27, `tidyr` 1.3.2, `readr` 2.2.0. CI каждый раз ставит актуальные версии пакетов с CRAN, так что совместимость с новыми версиями тоже проверяется.
 
 ---
 
@@ -172,6 +184,7 @@ Get-ChildItem -Directory lab* | ForEach-Object { Rscript run_lab.R $_.Name }   #
 | `there is no package called 'xxx'` | Выполни `install.packages("xxx")` (список — в разделе 2). |
 | `No suitable servers found … connection refused` (лаба 10) | MongoDB не запущен — раздел 2. |
 | `JAVA_HOME is not set` / `Java was not found` (лаба 13) | Установи JDK 17 и задай `JAVA_HOME` — раздел 2; перезапусти RStudio. |
+| `ignoring SIGPIPE signal` / `writeBin` в `spark_connect()` (лаба 13) | Spark-процесс не успел стартовать (обычно мало свободной памяти). Закрой тяжёлые программы и запусти ещё раз; при 8 ГБ ОЗУ уменьши память драйвера в `lab13.R`: `sparklyr.shell.driver-memory` → `"2G"`. |
 | `Spark … not installed` (лаба 13) | `sparklyr::spark_install(version = "3.5")`. |
 | `cannot open file 'data/…'` | Рабочая папка не равна папке лабы — `setwd()` или используй `run_lab.R`. |
 | `'mc.cores' > 1 is not supported on Windows` | Старая версия `lab12.R` — обнови репозиторий; в актуальной версии есть обёртка `mc_lapply`. |

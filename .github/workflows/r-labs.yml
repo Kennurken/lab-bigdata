@@ -3,7 +3,9 @@ name: R labs
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md"]
   pull_request:
+    paths-ignore: ["**.md"]
   workflow_dispatch:
 
 jobs:
@@ -65,7 +67,9 @@ jobs:
           for d in lab*/; do
             d=${d%/}
             echo "::group::$d"
-            if Rscript run_lab.R "$d"; then r="✅ ok"; else r="❌ failed"; status=1; tail -n 25 "$d/output.txt" || true; fi
+            if Rscript run_lab.R "$d"; then r="✅ ok"
+            elif [ "$d" = "lab13-r-spark" ] && { echo "retrying Spark lab once (JVM start is flaky on small runners)"; Rscript run_lab.R "$d"; }; then r="✅ ok (2nd try)"
+            else r="❌ failed"; status=1; tail -n 25 "$d/output.txt" || true; fi
             echo "::endgroup::"
             echo "| $d | $r |" >> "$GITHUB_STEP_SUMMARY"
           done
