@@ -1,0 +1,27 @@
+Package: labbigdata
+Title: Big Data Analysis Labs in R
+Version: 0.0.1
+Description: Dependency manifest for the lab-bigdata course labs. This repository
+    is not an R package; the file lets CI and `remotes::install_deps()` install
+    every package the labs use.
+License: unlimited
+Encoding: UTF-8
+Imports:
+    DBI,
+    RSQLite,
+    data.table,
+    dplyr,
+    future,
+    future.apply,
+    ggplot2,
+    jsonlite,
+    mongolite,
+    nycflights13,
+    randomForest,
+    readr,
+    readxl,
+    rpart,
+    sparklyr,
+    tibble,
+    tidyr,
+    writexl

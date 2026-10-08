@@ -1,0 +1,66 @@
+name: R labs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  labs:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          cache-version: 1
+
+      # Lab 13 (Spark) needs Java 17; lab 10 needs a running MongoDB.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: ankane/setup-mongodb@v1
+
+      - name: Install Spark 3.5 (lab 13)
+        shell: Rscript {0}
+        run: sparklyr::spark_install(version = "3.5")
+
+      - name: Run all labs
+        shell: bash
+        run: |
+          status=0
+          {
+            echo "### R labs on ${{ matrix.os }}"
+            echo "| lab | result |"
+            echo "|-----|--------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for d in lab*/; do
+            d=${d%/}
+            echo "::group::$d"
+            if Rscript run_lab.R "$d"; then r="✅ ok"; else r="❌ failed"; status=1; tail -n 25 "$d/output.txt" || true; fi
+            echo "::endgroup::"
+            echo "| $d | $r |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          exit $status
+
+      - name: Upload run outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs-${{ matrix.os }}
+          path: |
+            lab*/output.txt
+            lab*/screenshots/
+          retention-days: 7
