@@ -85,7 +85,16 @@ spark_installed_versions()
 
 > **Windows:** Spark требует **Microsoft Visual C++ 2010 SP1 Redistributable (x64)** — https://www.microsoft.com/en-us/download/details.aspx?id=26999 (или `choco install vcredist2010`). Без него `spark_connect()` падает с ошибкой про «Visual C++ 2010 SP1». Это подтверждено в CI. Дальше перезапусти R.
 >
-> Иногда ещё просит `winutils.exe` / `HADOOP_HOME`. `sparklyr::spark_install()` обычно ставит нужное сам; если видишь ошибку про `winutils` — задай `HADOOP_HOME` на каталог с `bin\winutils.exe` для Hadoop 3. Этот сценарий **не проверялся**.
+> **Windows, второй обязательный шаг — `winutils.exe`.** Это штатное требование Spark/sparklyr (подтверждено в CI): после `spark_install()` выполни в R
+>
+> ```r
+> bin <- file.path(sparklyr::spark_install_find(version = "3.5")$sparkVersionDir, "tmp", "hadoop", "bin")
+> dir.create(bin, recursive = TRUE, showWarnings = FALSE)
+> base <- "https://github.com/steveloughran/winutils/raw/master/hadoop-3.0.0/bin/"
+> for (f in c("winutils.exe", "hadoop.dll")) download.file(paste0(base, f), file.path(bin, f), mode = "wb")
+> ```
+>
+> ⚠️ Это **сторонние бинарные файлы** (репозиторий `steveloughran/winutils`) — именно их рекомендует сам sparklyr в тексте ошибки. Если не доверяешь, собери winutils самостоятельно или запускай лабу 13 в WSL2/Linux.
 
 ### MongoDB (лаба 10)
 

@@ -42,6 +42,17 @@ jobs:
         shell: Rscript {0}
         run: sparklyr::spark_install(version = "3.5")
 
+      # Spark on Windows also needs Hadoop winutils.exe (sparklyr prints these exact steps).
+      - name: Install winutils (Windows, lab 13)
+        if: runner.os == 'Windows'
+        shell: Rscript {0}
+        run: |
+          bin <- file.path(sparklyr::spark_install_find(version = "3.5")$sparkVersionDir, "tmp", "hadoop", "bin")
+          dir.create(bin, recursive = TRUE, showWarnings = FALSE)
+          base <- "https://github.com/steveloughran/winutils/raw/master/hadoop-3.0.0/bin/"
+          for (f in c("winutils.exe", "hadoop.dll")) download.file(paste0(base, f), file.path(bin, f), mode = "wb")
+          list.files(bin)
+
       - name: Run all labs
         shell: bash
         run: |
