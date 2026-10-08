@@ -1,0 +1,181 @@
+> # Зертханалық сабақ №11
+> # data.table көмегімен үлкен деректерді өңдеу.
+> # Деректер: 2 млн жолдық сатылым журналы (генерацияланған) + nycflights13.
+> 
+> library(data.table)
+
+Attaching package: ‘data.table’
+
+The following object is masked from ‘package:base’:
+
+    %notin%
+
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:data.table’:
+
+    between, first, last
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(nycflights13)
+> dir.create("data", showWarnings = FALSE)
+> setDTthreads(0)
+> getDTthreads()
+[1] 8
+> # ==== 1-тапсырма. 2 млн жолдық деректер жиынын құру және сақтау ====
+> set.seed(11)
+> n <- 2e6
+> dt <- data.table(
++   id = 1:n,
++   date = as.IDate("2026-01-01") + sample(0:272, n, replace = TRUE),
++   city = sample(c("Алматы", "Астана", "Шымкент", "Қызылорда", "Ақтөбе", "Қарағанды"), n, TRUE),
++   product = sample(c("Ноутбук", "Телефон", "Планшет", "Құлаққап", "Монитор"), n, TRUE),
++   qty = sample(1:8, n, TRUE),
++   price = round(runif(n, 5000, 400000), -2)
++ )
+> dt[, revenue := qty * price]
+> t_write <- system.time(fwrite(dt, "data/sales_2m.csv"))[["elapsed"]]
+> round(file.size("data/sales_2m.csv") / 1024^2, 1)
+[1] 124.4
+> t_write
+[1] 0.105
+> # ==== 2-тапсырма. fread() және read.csv() жылдамдығы ====
+> t_fread <- system.time(d1 <- fread("data/sales_2m.csv"))[["elapsed"]]
+> t_base <- system.time(d2 <- read.csv("data/sales_2m.csv"))[["elapsed"]]
+> data.frame(fread = t_fread, read.csv = t_base, speedup = round(t_base / t_fread, 1))
+  fread read.csv speedup
+1 0.254    3.115    12.3
+> dim(d1)
+[1] 2000000       7
+> rm(d2); invisible(gc())
+> # ==== 3-тапсырма. DT[i, j, by] синтаксисі: сүзу (i) ====
+> d1[city == "Қызылорда" & product == "Ноутбук"][1:5]
+      id       date      city product   qty  price revenue
+   <int>     <IDat>    <char>  <char> <int>  <num>   <num>
+1:    42 2026-08-29 Қызылорда Ноутбук     5 288200 1441000
+2:    60 2026-02-18 Қызылорда Ноутбук     3 266700  800100
+3:    85 2026-09-17 Қызылорда Ноутбук     7 154700 1082900
+4:    94 2026-09-24 Қызылорда Ноутбук     1 208200  208200
+5:   124 2026-03-21 Қызылорда Ноутбук     2 170800  341600
+> d1[revenue > 3e6, .N]
+[1] 15876
+> # ==== 4-тапсырма. Есептеу (j) және топтау (by) ====
+> d1[, .(total = sum(revenue), mean_check = round(mean(revenue)), orders = .N), by = city][order(-total)]
+        city        total mean_check orders
+      <char>        <num>      <num>  <int>
+1:    Астана 305083301900     911979 334529
+2:    Ақтөбе 304307105800     913470 333133
+3:    Алматы 304031093400     911848 333423
+4: Қарағанды 303910741700     911566 333394
+5: Қызылорда 303399874200     911757 332764
+6:   Шымкент 303121879800     910941 332757
+> d1[, .(revenue_mln = round(sum(revenue) / 1e6, 1)), by = .(month = month(date), product)][order(month, -revenue_mln)][1:10]
+    month  product revenue_mln
+    <int>   <char>       <num>
+ 1:     1  Телефон     41779.7
+ 2:     1  Ноутбук     41667.2
+ 3:     1  Планшет     41498.6
+ 4:     1  Монитор     41312.7
+ 5:     1 Құлаққап     40845.9
+ 6:     2  Монитор     37756.4
+ 7:     2  Телефон     37541.5
+ 8:     2  Планшет     37524.6
+ 9:     2  Ноутбук     37200.7
+10:     2 Құлаққап     36974.1
+> # ==== 5-тапсырма. Сілтеме арқылы өзгерту (:=) ====
+> d1[, discount := fifelse(qty >= 5, 0.1, 0)]
+> d1[, net := revenue * (1 - discount)]
+> d1[, .(gross = sum(revenue), net = sum(net)), by = discount]
+   discount        gross          net
+      <num>        <num>        <num>
+1:      0.1 1.318115e+12 1.186303e+12
+2:      0.0 5.057390e+11 5.057390e+11
+> # ==== 6-тапсырма. Кілттер (setkey) және бинарлық іздеу ====
+> t_scan <- system.time(for (i in 1:20) d1[city == "Ақтөбе" & product == "Монитор", .N])[["elapsed"]]
+> setkey(d1, city, product)
+> t_key <- system.time(for (i in 1:20) d1[.("Ақтөбе", "Монитор"), .N])[["elapsed"]]
+> data.frame(vector_scan = t_scan, binary_search = t_key)
+  vector_scan binary_search
+1       0.073         0.007
+> key(d1)
+[1] "city"    "product"
+> # ==== 7-тапсырма. Біріктіру (join) ====
+> regions <- data.table(city = c("Алматы", "Астана", "Шымкент", "Қызылорда", "Ақтөбе", "Қарағанды"),
++                       region = c("Оңтүстік", "Орталық", "Оңтүстік", "Оңтүстік", "Батыс", "Орталық"))
+> setkey(regions, city)
+> regions[d1, on = "city"][, .(revenue_bln = round(sum(revenue) / 1e9, 2)), by = region]
+     region revenue_bln
+     <char>       <num>
+1: Оңтүстік      910.55
+2:  Орталық      608.99
+3:    Батыс      304.31
+> # ==== 8-тапсырма. data.table, dplyr және base R жылдамдығын салыстыру ====
+> df <- as.data.frame(d1)
+> bench <- data.frame(
++   method = c("data.table", "dplyr", "base aggregate"),
++   seconds = c(
++     system.time(d1[, .(s = sum(revenue)), by = .(city, product)])[["elapsed"]],
++     system.time(df %>% group_by(city, product) %>% summarise(s = sum(revenue), .groups = "drop"))[["elapsed"]],
++     system.time(aggregate(revenue ~ city + product, data = df, FUN = sum))[["elapsed"]]
++   )
++ )
+> bench
+          method seconds
+1     data.table   0.257
+2          dplyr   0.140
+3 base aggregate   0.453
+> # ==== 9-тапсырма. Ұзын/кең формат (dcast / melt) ====
+> wide <- dcast(d1, city ~ product, value.var = "revenue", fun.aggregate = function(x) round(sum(x) / 1e9, 2))
+> wide
+Key: <city>
+        city Монитор Ноутбук Планшет Телефон Құлаққап
+      <char>   <num>   <num>   <num>   <num>    <num>
+1:    Алматы   60.81   60.82   60.64   60.75    61.01
+2:    Астана   61.21   60.91   61.24   61.08    60.64
+3:    Ақтөбе   60.98   61.04   60.82   60.87    60.60
+4:   Шымкент   60.28   60.91   60.67   60.90    60.36
+5: Қарағанды   60.70   61.03   60.65   60.88    60.64
+6: Қызылорда   60.84   60.85   60.86   60.44    60.42
+> melt(wide, id.vars = "city", variable.name = "product", value.name = "revenue_bln")[1:6]
+        city product revenue_bln
+      <char>  <fctr>       <num>
+1:    Алматы Монитор       60.81
+2:    Астана Монитор       61.21
+3:    Ақтөбе Монитор       60.98
+4:   Шымкент Монитор       60.28
+5: Қарағанды Монитор       60.70
+6: Қызылорда Монитор       60.84
+> # ==== 10-тапсырма. Нақты деректер: flights ====
+> fl <- as.data.table(flights)
+> fl[!is.na(arr_delay), .(n = .N, delay = round(mean(arr_delay), 1)), keyby = .(origin, carrier)][n > 5000]
+Key: <origin, carrier>
+    origin carrier     n delay
+    <char>  <char> <int> <num>
+ 1:    EWR      B6  6472   9.4
+ 2:    EWR      EV 41557  17.0
+ 3:    EWR      UA 45501   3.5
+ 4:    EWR      WN  6056  11.1
+ 5:    JFK      9E 13742   8.8
+ 6:    JFK      AA 13600   2.1
+ 7:    JFK      B6 41666   8.9
+ 8:    JFK      DL 20559  -2.4
+ 9:    JFK      MQ  6838  12.5
+10:    LGA      AA 14984  -1.3
+11:    LGA      B6  5911  13.5
+12:    LGA      DL 22804   3.9
+13:    LGA      EV  8225   9.3
+14:    LGA      MQ 16102   9.3
+15:    LGA      UA  7803   4.6
+16:    LGA      US 12541   2.5
+17:    LGA      WN  5988   8.2
+> file.remove("data/sales_2m.csv")
+[1] TRUE

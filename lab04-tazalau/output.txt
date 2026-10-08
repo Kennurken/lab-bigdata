@@ -1,0 +1,155 @@
+> # Зертханалық сабақ №4
+> # Үлкен деректерді тазалау және алдын ала өңдеу.
+> 
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(tidyr)
+> library(ggplot2)
+> library(nycflights13)
+> dir.create("screenshots", showWarnings = FALSE)
+> set.seed(4)
+> # ==== 1-тапсырма. «Лас» деректер жиынын құру ====
+> n <- 20000
+> raw <- data.frame(
++   id = 1:n,
++   city = sample(c("Алматы", "алматы", " Астана", "Астана ", "Шымкент", "ШЫМКЕНТ", "Қызылорда"),
++                 n, replace = TRUE),
++   age = sample(c(18:70, NA, -5, 250), n, replace = TRUE,
++                prob = c(rep(1, 53), 3, 0.3, 0.3)),
++   income = round(rlnorm(n, 12.5, 0.4)),
++   date = sample(c("2026-09-01", "01.09.2026", "2026/09/01", NA), n, replace = TRUE,
++                 prob = c(0.7, 0.15, 0.1, 0.05))
++ )
+> raw$income[sample(n, 400)] <- NA
+> raw$income[sample(n, 30)] <- raw$income[sample(n, 30)] * 50
+> raw <- rbind(raw, raw[sample(n, 800), ])
+> dim(raw)
+[1] 20800     5
+> head(raw, 10)
+   id      city age income       date
+1   1    Астана  40 133798 2026-09-01
+2   2    Астана  60 330830 2026-09-01
+3   3    Астана  54 318088 2026-09-01
+4   4 Қызылорда  56 304419 2026-09-01
+5   5   Астана   43 196440 2026/09/01
+6   6    Астана  37 156251 2026-09-01
+7   7   ШЫМКЕНТ  23 462551 2026-09-01
+8   8   Шымкент  70 685460 2026-09-01
+9   9    алматы  56 227459 01.09.2026
+10 10    Астана  18 205653 2026-09-01
+> # ==== 2-тапсырма. Деректер сапасын бағалау ====
+> colSums(is.na(raw))
+    id   city    age income   date 
+     0      0   1086    422   1057 
+> sum(duplicated(raw))
+[1] 800
+> table(raw$city)
+
+   Астана    алматы    Алматы   Астана  Қызылорда   Шымкент   ШЫМКЕНТ 
+     2971      2921      2965      3016      2972      3024      2931 
+> summary(raw$age)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs 
+  -5.00   30.00   44.00   44.58   57.00  250.00    1086 
+> summary(raw$income)
+    Min.  1st Qu.   Median     Mean  3rd Qu.     Max.      NAs 
+   55464   204371   266788   314056   350444 42118050      422 
+> # ==== 3-тапсырма. Қайталанатын жазбаларды жою ====
+> clean <- distinct(raw)
+> nrow(raw) - nrow(clean)
+[1] 800
+> # ==== 4-тапсырма. Мәтіндік мәндерді стандарттау ====
+> clean <- clean %>%
++   mutate(city = trimws(city),
++          city = paste0(toupper(substr(city, 1, 1)), tolower(substring(city, 2))))
+> table(clean$city)
+
+   Алматы    Астана Қызылорда   Шымкент 
+     5668      5764      2859      5709 
+> # ==== 5-тапсырма. Қате мәндерді өңдеу ====
+> sum(clean$age < 0 | clean$age > 100, na.rm = TRUE)
+[1] 226
+> clean <- clean %>% mutate(age = ifelse(age < 0 | age > 100, NA, age))
+> summary(clean$age)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.     NAs 
+  18.00   31.00   44.00   43.89   57.00   70.00    1262 
+> # ==== 6-тапсырма. Күн форматын біріздендіру ====
+> parse_date <- function(x) {
++   d <- as.Date(x, format = "%Y-%m-%d")
++   d[is.na(d)] <- as.Date(x[is.na(d)], format = "%d.%m.%Y")
++   d[is.na(d)] <- as.Date(x[is.na(d)], format = "%Y/%m/%d")
++   d
++ }
+> clean$date <- parse_date(clean$date)
+> table(format(clean$date), useNA = "ifany")
+
+2026-09-01       <NA> 
+     18975       1025 
+> # ==== 7-тапсырма. Шығарындыларды (outliers) IQR әдісімен анықтау ====
+> q <- quantile(clean$income, c(0.25, 0.75), na.rm = TRUE)
+> iqr <- diff(q)
+> upper <- q[2] + 1.5 * iqr
+> lower <- q[1] - 1.5 * iqr
+> c(lower = unname(lower), upper = unname(upper))
+    lower     upper 
+-15250.88 570102.12 
+> outliers <- sum(clean$income > upper | clean$income < lower, na.rm = TRUE)
+> outliers
+[1] 595
+> p_before <- ggplot(clean, aes(y = income)) +
++   geom_boxplot(fill = "#C45C26", alpha = 0.6, na.rm = TRUE) +
++   labs(title = "Табыс: тазалауға дейін", y = "Табыс, ₸") +
++   theme_minimal()
+> ggsave("screenshots/01_outliers_before.png", p_before, width = 5, height = 4, dpi = 110)
+> clean <- clean %>% mutate(income = ifelse(income > upper * 3, NA, pmin(income, upper)))
+> # ==== 8-тапсырма. Бос мәндерді толтыру ====
+> clean <- clean %>%
++   group_by(city) %>%
++   mutate(age = ifelse(is.na(age), round(median(age, na.rm = TRUE)), age),
++          income = ifelse(is.na(income), median(income, na.rm = TRUE), income)) %>%
++   ungroup() %>%
++   filter(!is.na(date))
+> colSums(is.na(clean))
+    id   city    age income   date 
+     0      0      0      0      0 
+> dim(clean)
+[1] 18975     5
+> p_after <- ggplot(clean, aes(x = city, y = income)) +
++   geom_boxplot(fill = "#0F6E6B", alpha = 0.6) +
++   labs(title = "Табыс: тазалаудан кейін", x = "Қала", y = "Табыс, ₸") +
++   theme_minimal()
+> ggsave("screenshots/02_outliers_after.png", p_after, width = 7, height = 4, dpi = 110)
+> # ==== 9-тапсырма. Нақты үлкен деректер: nycflights13::flights ====
+> dim(flights)
+[1] 336776     19
+> colSums(is.na(flights))[colSums(is.na(flights)) > 0]
+ dep_time dep_delay  arr_time arr_delay   tailnum  air_time 
+     8255      8255      8713      9430      2512      9430 
+> flights_clean <- flights %>%
++   filter(!is.na(dep_time), !is.na(arr_delay)) %>%
++   distinct()
+> nrow(flights) - nrow(flights_clean)
+[1] 9430
+> round(100 * nrow(flights_clean) / nrow(flights), 2)
+[1] 97.2
+> # ==== 10-тапсырма. Нормализация және стандарттау ====
+> clean <- clean %>%
++   mutate(income_minmax = (income - min(income)) / (max(income) - min(income)),
++          income_z = as.numeric(scale(income)))
+> summary(clean[, c("income", "income_minmax", "income_z")])
+     income       income_minmax       income_z      
+ Min.   : 55464   Min.   :0.0000   Min.   :-2.1066  
+ 1st Qu.:205520   1st Qu.:0.2916   1st Qu.:-0.7376  
+ Median :266086   Median :0.4093   Median :-0.1851  
+ Mean   :286375   Mean   :0.4487   Mean   : 0.0000  
+ 3rd Qu.:347592   3rd Qu.:0.5676   3rd Qu.: 0.5585  
+ Max.   :570102   Max.   :1.0000   Max.   : 2.5884  

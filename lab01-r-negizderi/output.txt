@@ -1,0 +1,133 @@
+> # Зертханалық сабақ №1
+> # R статистикалық ортасының негізгі компоненттері.
+> # Командалық консоль, объектілер, пакеттер, функциялар, құрылғылар.
+> 
+> dir.create("screenshots", showWarnings = FALSE)
+> # ==== 1-тапсырма. R ортасы туралы ақпарат ====
+> R.version.string
+[1] "R version 4.6.1 (2026-06-24)"
+> Sys.info()[c("sysname", "machine")]
+ sysname  machine 
+"Darwin"  "arm64" 
+> getwd()
+[1] "~/lab-bigdata/lab01-r-negizderi"
+> # ==== 2-тапсырма. Консольді калькулятор ретінде қолдану ====
+> 25 + 17
+[1] 42
+> 144 / 12
+[1] 12
+> 2^10
+[1] 1024
+> sqrt(625)
+[1] 25
+> 17 %% 5
+[1] 2
+> 17 %/% 5
+[1] 3
+> log(100, base = 10)
+[1] 2
+> exp(1)
+[1] 2.718282
+> round(pi, 4)
+[1] 3.1416
+> # ==== 3-тапсырма. Объектілер құру және меншіктеу ====
+> group <- "ИС-00-1"
+> students_count <- 24
+> average_grade <- 3.85
+> is_active <- TRUE
+> ls()
+[1] "average_grade"  "group"          "is_active"      "students_count"
+> class(group)
+[1] "character"
+> class(students_count)
+[1] "numeric"
+> class(is_active)
+[1] "logical"
+> students_count * average_grade
+[1] 92.4
+> # ==== 4-тапсырма. Кірістірілген функциялар ====
+> grades <- c(78, 85, 92, 67, 88, 95, 73, 81)
+> length(grades)
+[1] 8
+> sum(grades)
+[1] 659
+> mean(grades)
+[1] 82.375
+> median(grades)
+[1] 83
+> max(grades)
+[1] 95
+> min(grades)
+[1] 67
+> sd(grades)
+[1] 9.530965
+> sort(grades, decreasing = TRUE)
+[1] 95 92 88 85 81 78 73 67
+> # ==== 5-тапсырма. Өз функциясын жазу ====
+> grade_letter <- function(score) {
++   if (score >= 90) "A"
++   else if (score >= 75) "B"
++   else if (score >= 60) "C"
++   else "F"
++ }
+> sapply(grades, grade_letter)
+[1] "B" "B" "A" "C" "B" "A" "C" "B"
+> bmi <- function(weight, height) round(weight / height^2, 1)
+> bmi(70, 1.75)
+[1] 22.9
+> # ==== 6-тапсырма. Пакеттермен жұмыс ====
+> nrow(installed.packages())
+[1] 103
+> library(stats)
+> search()
+[1] ".GlobalEnv"        "package:stats"     "package:graphics"  "package:grDevices"
+[5] "package:utils"     "package:datasets"  "package:methods"   "Autoloads"        
+[9] "package:base"     
+> packageVersion("ggplot2")
+[1] ‘4.0.3’
+> library(ggplot2)
+> "ggplot2" %in% loadedNamespaces()
+[1] TRUE
+> # ==== 7-тапсырма. Анықтама жүйесі ====
+> args(mean)
+function (x, ...) 
+NULL
+> args(round)
+function (x, digits = 0, ...) 
+NULL
+> names(formals(sd))
+[1] "x"     "na.rm"
+> help.search("median", package = "stats")$matches[, c("Topic", "Title")]
+       Topic                                                    Title
+1        mad                                Median Absolute Deviation
+2     median                                             Median Value
+3     median                                             Median Value
+4     median                                             Median Value
+5  medpolish Median Polish (Robust Two-way Decomposition) of a Matrix
+6     runmed          Running Medians - Robust Scatter Plot Smoothing
+7     smooth                       Tukey's (Running Median) Smoothing
+8 smoothEnds               End Points Smoothing (for Running Medians)
+> # ==== 8-тапсырма. Графикалық құрылғылар ====
+> png("screenshots/01_base_plot.png", width = 900, height = 550, res = 120)
+> barplot(grades,
++         names.arg = paste0("С", seq_along(grades)),
++         col = "#0F6E6B",
++         main = "Студенттердің бағалары",
++         xlab = "Студент", ylab = "Балл")
+> abline(h = mean(grades), col = "#C45C26", lwd = 2, lty = 2)
+> dev.off()
+null device 
+          1 
+> dev.list()
+NULL
+> # ==== 9-тапсырма. Жұмыс кеңістігін басқару ====
+> save(grades, group, file = "workspace.RData")
+> rm(grades)
+> exists("grades")
+[1] FALSE
+> load("workspace.RData")
+> exists("grades")
+[1] TRUE
+> ls()
+[1] "average_grade"  "bmi"            "grade_letter"   "grades"         "group"         
+[6] "is_active"      "students_count"

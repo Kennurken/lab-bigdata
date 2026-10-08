@@ -1,0 +1,159 @@
+> # Зертханалық сабақ №3
+> # Деректерді CSV, Excel және JSON файлдарынан импорттау.
+> 
+> library(readr)
+> library(readxl)
+> library(writexl)
+> library(jsonlite)
+> dir.create("data", showWarnings = FALSE)
+> set.seed(3)
+> # ==== 1-тапсырма. Бастапқы деректер жиынын дайындау ====
+> n <- 5000
+> sales <- data.frame(
++   order_id = 1:n,
++   date = format(as.Date("2026-01-01") + sample(0:269, n, replace = TRUE)),
++   city = sample(c("Қызылорда", "Алматы", "Астана", "Шымкент", "Ақтөбе"), n, replace = TRUE),
++   product = sample(c("Ноутбук", "Телефон", "Планшет", "Құлаққап"), n, replace = TRUE),
++   qty = sample(1:10, n, replace = TRUE),
++   price = sample(c(350000, 180000, 120000, 25000), n, replace = TRUE)
++ )
+> sales$revenue <- sales$qty * sales$price
+> head(sales)
+  order_id       date      city  product qty  price revenue
+1        1 2026-09-18    Алматы  Ноутбук   5  25000  125000
+2        2 2026-07-05    Ақтөбе  Ноутбук   3  25000   75000
+3        3 2026-05-20    Астана  Планшет   1 180000  180000
+4        4 2026-02-05 Қызылорда Құлаққап   7  25000  175000
+5        5 2026-07-05 Қызылорда Құлаққап   1  25000   25000
+6        6 2026-07-02   Шымкент  Телефон   9 120000 1080000
+> # ==== 2-тапсырма. Файлдарға экспорттау ====
+> write.csv(sales, "data/sales.csv", row.names = FALSE, fileEncoding = "UTF-8")
+> write_xlsx(sales, "data/sales.xlsx")
+> write_json(sales, "data/sales.json", pretty = TRUE)
+> file.info(list.files("data", full.names = TRUE))[, "size", drop = FALSE]
+                  size
+data/sales.csv  339748
+data/sales.json 885340
+data/sales.xlsx 163882
+> # ==== 3-тапсырма. CSV импорттау (base R және readr) ====
+> csv_base <- read.csv("data/sales.csv", encoding = "UTF-8")
+> dim(csv_base)
+[1] 5000    7
+> str(csv_base)
+'data.frame':	5000 obs. of  7 variables:
+ $ order_id: int  1 2 3 4 5 6 7 8 9 10 ...
+ $ date    : chr  "2026-09-18" "2026-07-05" "2026-05-20" "2026-02-05" ...
+ $ city    : chr  "Алматы" "Ақтөбе" "Астана" "Қызылорда" ...
+ $ product : chr  "Ноутбук" "Ноутбук" "Планшет" "Құлаққап" ...
+ $ qty     : int  5 3 1 7 1 9 1 2 8 9 ...
+ $ price   : int  25000 25000 180000 25000 25000 120000 180000 25000 120000 180000 ...
+ $ revenue : num  125000 75000 180000 175000 25000 1080000 180000 50000 960000 1620000 ...
+> csv_readr <- read_csv("data/sales.csv", show_col_types = FALSE)
+> csv_readr
+# A tibble: 5,000 × 7
+   order_id date       city      product    qty  price revenue
+      <dbl> <date>     <chr>     <chr>    <dbl>  <dbl>   <dbl>
+ 1        1 2026-09-18 Алматы    Ноутбук      5  25000  125000
+ 2        2 2026-07-05 Ақтөбе    Ноутбук      3  25000   75000
+ 3        3 2026-05-20 Астана    Планшет      1 180000  180000
+ 4        4 2026-02-05 Қызылорда Құлаққап     7  25000  175000
+ 5        5 2026-07-05 Қызылорда Құлаққап     1  25000   25000
+ 6        6 2026-07-02 Шымкент   Телефон      9 120000 1080000
+ 7        7 2026-06-17 Қызылорда Ноутбук      1 180000  180000
+ 8        8 2026-02-17 Шымкент   Телефон      2  25000   50000
+ 9        9 2026-04-14 Астана    Планшет      8 120000  960000
+10       10 2026-05-16 Алматы    Ноутбук      9 180000 1620000
+# ℹ 4,990 more rows
+> spec(csv_readr)
+cols(
+  order_id = col_double(),
+  date = col_date(format = ""),
+  city = col_character(),
+  product = col_character(),
+  qty = col_double(),
+  price = col_double(),
+  revenue = col_double()
+)
+> # ==== 4-тапсырма. Excel импорттау ====
+> excel_sheets("data/sales.xlsx")
+[1] "Sheet1"
+> xl <- read_excel("data/sales.xlsx", sheet = 1)
+> dim(xl)
+[1] 5000    7
+> head(xl, 5)
+# A tibble: 5 × 7
+  order_id date       city      product    qty  price revenue
+     <dbl> <chr>      <chr>     <chr>    <dbl>  <dbl>   <dbl>
+1        1 2026-09-18 Алматы    Ноутбук      5  25000  125000
+2        2 2026-07-05 Ақтөбе    Ноутбук      3  25000   75000
+3        3 2026-05-20 Астана    Планшет      1 180000  180000
+4        4 2026-02-05 Қызылорда Құлаққап     7  25000  175000
+5        5 2026-07-05 Қызылорда Құлаққап     1  25000   25000
+> read_excel("data/sales.xlsx", range = "A1:D6")
+# A tibble: 5 × 4
+  order_id date       city      product 
+     <dbl> <chr>      <chr>     <chr>   
+1        1 2026-09-18 Алматы    Ноутбук 
+2        2 2026-07-05 Ақтөбе    Ноутбук 
+3        3 2026-05-20 Астана    Планшет 
+4        4 2026-02-05 Қызылорда Құлаққап
+5        5 2026-07-05 Қызылорда Құлаққап
+> # ==== 5-тапсырма. JSON импорттау ====
+> js <- fromJSON("data/sales.json")
+> dim(js)
+[1] 5000    7
+> head(js, 5)
+  order_id       date      city  product qty  price revenue
+1        1 2026-09-18    Алматы  Ноутбук   5  25000  125000
+2        2 2026-07-05    Ақтөбе  Ноутбук   3  25000   75000
+3        3 2026-05-20    Астана  Планшет   1 180000  180000
+4        4 2026-02-05 Қызылорда Құлаққап   7  25000  175000
+5        5 2026-07-05 Қызылорда Құлаққап   1  25000   25000
+> student_json <- '{"name":"Ерлан","group":"ИС-00-1","courses":["Big Data","Mobile"],"gpa":3.6}'
+> fromJSON(student_json)
+$name
+[1] "Ерлан"
+
+$group
+[1] "ИС-00-1"
+
+$courses
+[1] "Big Data" "Mobile"  
+
+$gpa
+[1] 3.6
+
+> # ==== 6-тапсырма. Импорт нәтижелерін салыстыру ====
+> timing <- data.frame(
++   format = c("CSV (read.csv)", "CSV (readr)", "Excel (readxl)", "JSON (jsonlite)"),
++   seconds = c(
++     system.time(read.csv("data/sales.csv"))[["elapsed"]],
++     system.time(read_csv("data/sales.csv", show_col_types = FALSE))[["elapsed"]],
++     system.time(read_excel("data/sales.xlsx"))[["elapsed"]],
++     system.time(fromJSON("data/sales.json"))[["elapsed"]]
++   ),
++   rows = c(nrow(csv_base), nrow(csv_readr), nrow(xl), nrow(js))
++ )
+> timing
+           format seconds rows
+1  CSV (read.csv)   0.006 5000
+2     CSV (readr)   0.006 5000
+3  Excel (readxl)   0.012 5000
+4 JSON (jsonlite)   0.016 5000
+> all.equal(csv_base$revenue, xl$revenue)
+[1] TRUE
+> all.equal(csv_base$revenue, js$revenue)
+[1] TRUE
+> # ==== 7-тапсырма. Импортталған деректерді тексеру ====
+> sum(is.na(csv_base))
+[1] 0
+> table(csv_base$city)
+
+   Ақтөбе    Алматы    Астана Қызылорда   Шымкент 
+      963      1028       984      1023      1002 
+> aggregate(revenue ~ product, data = csv_base, FUN = sum)
+   product    revenue
+1 Құлаққап 1196215000
+2  Ноутбук 1117090000
+3  Планшет 1153440000
+4  Телефон 1097500000

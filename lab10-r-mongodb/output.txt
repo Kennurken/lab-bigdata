@@ -1,0 +1,163 @@
+> # Зертханалық сабақ №10
+> # R және MongoDB: NoSQL деректерін талдау.
+> # Сервер: MongoDB 8.0 (localhost:27017), клиент: mongolite.
+> 
+> library(mongolite)
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(nycflights13)
+> url <- "mongodb://127.0.0.1:27017"
+> # ==== 1-тапсырма. MongoDB-ге қосылу ====
+> col <- mongo(collection = "flights", db = "bigdata_lab", url = url)
+> col$drop()
+> col$count()
+[1] 0
+> # ==== 2-тапсырма. Құжаттарды енгізу (insert) ====
+> fl <- flights %>%
++   left_join(airlines, by = "carrier") %>%
++   rename(airline = name) %>%
++   as.data.frame()
+> system.time(col$insert(fl))
+   user  system elapsed 
+  2.830   0.043   3.537 
+> col$count()
+[1] 336776
+> # ==== 3-тапсырма. Іздеу (find) және проекция ====
+> col$find('{"origin":"JFK","dest":"LAX"}',
++          fields = '{"_id":0,"month":1,"day":1,"carrier":1,"dep_delay":1}',
++          limit = 5)
+  month day dep_delay carrier
+1     1   1        -2      UA
+2     1   1        -2      VX
+3     1   1         2      B6
+4     1   1        13      AA
+5     1   1        -1      UA
+> col$find('{"dep_delay":{"$gt":900}}',
++          fields = '{"_id":0,"month":1,"day":1,"carrier":1,"origin":1,"dest":1,"dep_delay":1}',
++          sort = '{"dep_delay":-1}')
+  month day dep_delay carrier origin dest
+1     1   9      1301      HA    JFK  HNL
+2     6  15      1137      MQ    JFK  CMH
+3     1  10      1126      MQ    EWR  ORD
+4     9  20      1014      AA    JFK  SFO
+5     7  22      1005      MQ    JFK  CVG
+6     4  10       960      DL    JFK  TPA
+7     3  17       911      DL    LGA  MSP
+> # ==== 4-тапсырма. Санау және бірегей мәндер ====
+> col$count('{"month":12}')
+[1] 28135
+> length(col$distinct("dest"))
+[1] 105
+> sort(col$distinct("origin"))
+[1] "EWR" "JFK" "LGA"
+> # ==== 5-тапсырма. Агрегация конвейері ($group) ====
+> col$aggregate('[
++   {"$match": {"arr_delay": {"$ne": null}}},
++   {"$group": {"_id": "$airline", "flights": {"$sum": 1},
++               "avg_delay": {"$avg": "$arr_delay"},
++               "max_delay": {"$max": "$arr_delay"}}},
++   {"$sort": {"avg_delay": -1}},
++   {"$limit": 8}
++ ]') %>% mutate(avg_delay = round(avg_delay, 2))
+                          _id flights avg_delay max_delay
+1      Frontier Airlines Inc.     681     21.92       834
+2 AirTran Airways Corporation    3175     20.12       572
+3    ExpressJet Airlines Inc.   51108     15.80       577
+4          Mesa Airlines Inc.     544     15.56       381
+5       SkyWest Airlines Inc.      29     11.93       157
+6                   Envoy Air   25037     10.77      1127
+7      Southwest Airlines Co.   12044      9.65       453
+8             JetBlue Airways   54049      9.46       497
+> # ==== 6-тапсырма. Ай бойынша агрегация және $project ====
+> col$aggregate('[
++   {"$match": {"arr_delay": {"$ne": null}}},
++   {"$group": {"_id": "$month", "n": {"$sum": 1},
++               "late": {"$sum": {"$cond": [{"$gt": ["$arr_delay", 15]}, 1, 0]}}}},
++   {"$project": {"n": 1, "late_pct": {"$round": [{"$multiply": [{"$divide": ["$late", "$n"]}, 100]}, 1]}}},
++   {"$sort": {"_id": 1}}
++ ]')
+   _id     n late_pct
+1    1 26398     22.7
+2    2 23611     22.9
+3    3 27902     22.8
+4    4 27564     27.9
+5    5 28128     22.0
+6    6 27075     30.8
+7    7 28293     31.5
+8    8 28756     23.8
+9    9 27010     13.2
+10  10 28618     16.8
+11  11 26971     17.4
+12  12 27020     32.6
+> # ==== 7-тапсырма. Индекс және жылдамдық ====
+> t1 <- system.time(for (i in 1:10) col$count('{"tailnum":"N14228"}'))[["elapsed"]]
+> col$index(add = '{"tailnum":1}')
+  v key._id key.tailnum      name
+1 2       1          NA      _id_
+2 2      NA           1 tailnum_1
+> t2 <- system.time(for (i in 1:10) col$count('{"tailnum":"N14228"}'))[["elapsed"]]
+> data.frame(without_index = t1, with_index = t2)
+  without_index with_index
+1         0.684      0.007
+> col$index()$name
+[1] "_id_"      "tailnum_1"
+> # ==== 8-тапсырма. Кірістірілген құжаттар (NoSQL ерекшелігі) ====
+> st <- mongo(collection = "students", db = "bigdata_lab", url = url)
+> st$drop()
+> st$insert(c(
++   '{"name":"Ерлан","group":"ИС-00-1","courses":[{"title":"Big Data","grade":92},{"title":"Mobile","grade":88}]}',
++   '{"name":"Аружан","group":"ИС-00-1","courses":[{"title":"Big Data","grade":95}],"hobby":"шахмат"}',
++   '{"name":"Дастан","group":"ИС-00-2","courses":[{"title":"Big Data","grade":74},{"title":"Java","grade":81}]}'
++ ))
+List of 6
+ $ nInserted  : int 3
+ $ nMatched   : int 0
+ $ nModified  : int 0
+ $ nRemoved   : int 0
+ $ nUpserted  : int 0
+ $ writeErrors: list()
+> st$find('{"courses.title":"Java"}', fields = '{"_id":0,"name":1,"group":1}')
+    name   group
+1 Дастан ИС-00-2
+> st$aggregate('[{"$unwind":"$courses"},
++   {"$group":{"_id":"$courses.title","avg":{"$avg":"$courses.grade"},"n":{"$sum":1}}},
++   {"$sort":{"_id":1}}]')
+       _id avg n
+1 Big Data  87 3
+2     Java  81 1
+3   Mobile  88 1
+> # ==== 9-тапсырма. Жаңарту және жою ====
+> st$update('{"name":"Дастан"}', '{"$set":{"group":"ИС-00-1"}}')
+List of 3
+ $ modifiedCount: int 1
+ $ matchedCount : int 1
+ $ upsertedCount: int 0
+> st$remove('{"hobby":{"$exists":true}}')
+> st$find(fields = '{"_id":0,"name":1,"group":1}')
+    name   group
+1  Ерлан ИС-00-1
+2 Дастан ИС-00-1
+> # ==== 10-тапсырма. MongoDB нәтижесін R-де талдау ====
+> jfk <- col$find('{"origin":"JFK","arr_delay":{"$ne":null}}', fields = '{"_id":0,"carrier":1,"arr_delay":1}')
+> dim(jfk)
+[1] 109079      2
+> jfk %>% group_by(carrier) %>% summarise(n = n(), mean_delay = round(mean(arr_delay), 1)) %>%
++   arrange(desc(n)) %>% head(5)
+# A tibble: 5 × 3
+  carrier     n mean_delay
+  <chr>   <int>      <dbl>
+1 B6      41666        8.9
+2 DL      20559       -2.4
+3 9E      13742        8.8
+4 AA      13600        2.1
+5 MQ       6838       12.5

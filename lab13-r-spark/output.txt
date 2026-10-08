@@ -1,0 +1,210 @@
+> # Зертханалық сабақ №13
+> # R және Apache Spark ортасында үлкен деректерді өңдеу.
+> # Spark 3.5 (local режим), клиент: sparklyr.
+> 
+> library(sparklyr)
+
+Attaching package: ‘sparklyr’
+
+The following object is masked from ‘package:stats’:
+
+    filter
+
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(ggplot2)
+> library(nycflights13)
+> dir.create("screenshots", showWarnings = FALSE)
+> Sys.setenv(JAVA_HOME = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home")
+> # ==== 1-тапсырма. Spark-қа қосылу ====
+> spark_installed_versions()[, c("spark", "hadoop")]
+  spark hadoop
+1 3.5.8      3
+> conf <- spark_config()
+> conf$`sparklyr.shell.driver-memory` <- "4G"
+> conf$spark.sql.shuffle.partitions <- 8
+> sc <- spark_connect(master = "local[*]", version = "3.5", config = conf)
+> spark_version(sc)
+[1] ‘3.5.8’
+> # ==== 2-тапсырма. Деректерді Spark-қа жүктеу ====
+> flights_tbl <- copy_to(sc, flights, "flights", overwrite = TRUE)
+> airlines_tbl <- copy_to(sc, airlines, "airlines", overwrite = TRUE)
+> src_tbls(sc)
+[1] "airlines" "flights" 
+> sdf_nrow(flights_tbl)
+[1] 336776
+> sdf_ncol(flights_tbl)
+[1] 19
+> sdf_num_partitions(flights_tbl)
+[1] 1
+> # ==== 3-тапсырма. dplyr етістіктерін Spark-та орындау ====
+> flights_tbl %>%
++   filter(!is.na(arr_delay), dest == "LAX") %>%
++   select(month, carrier, dep_delay, arr_delay) %>%
++   head(5)
+# A query:  ?? x 4
+# Database: spark_connection
+  month carrier dep_delay arr_delay
+  <int> <chr>       <dbl>     <dbl>
+1     1 UA             -2         7
+2     1 UA             -2        29
+3     1 VX             -2         2
+4     1 B6              2        44
+5     1 AA             13         7
+> # ==== 4-тапсырма. Ленивті есептеу және SQL аудармасы ====
+> q <- flights_tbl %>%
++   filter(!is.na(arr_delay)) %>%
++   group_by(carrier) %>%
++   summarise(n = n(), mean_delay = mean(arr_delay, na.rm = TRUE)) %>%
++   arrange(desc(mean_delay))
+> show_query(q)
+<SQL>
+SELECT `carrier`, COUNT(*) AS `n`, AVG(`arr_delay`) AS `mean_delay`
+FROM `flights`
+WHERE (NOT((`arr_delay` IS NULL)))
+GROUP BY `carrier`
+ORDER BY `mean_delay` DESC
+> collect(q) %>% mutate(mean_delay = round(mean_delay, 2)) %>% head(8)
+# A tibble: 8 × 3
+  carrier     n mean_delay
+  <chr>   <dbl>      <dbl>
+1 F9        681      21.9 
+2 FL       3175      20.1 
+3 EV      51108      15.8 
+4 YV        544      15.6 
+5 OO         29      11.9 
+6 MQ      25037      10.8 
+7 WN      12044       9.65
+8 B6      54049       9.46
+> # ==== 5-тапсырма. Біріктіру (join) Spark ішінде ====
+> flights_tbl %>%
++   left_join(airlines_tbl, by = "carrier") %>%
++   group_by(name) %>%
++   summarise(flights = n(), total_dist_mln = sum(distance, na.rm = TRUE) / 1e6) %>%
++   arrange(desc(flights)) %>%
++   collect() %>%
++   mutate(total_dist_mln = round(total_dist_mln, 1)) %>%
++   head(6)
+# A tibble: 6 × 3
+  name                     flights total_dist_mln
+  <chr>                      <dbl>          <dbl>
+1 United Air Lines Inc.      58665           89.7
+2 JetBlue Airways            54635           58.4
+3 ExpressJet Airlines Inc.   54173           30.5
+4 Delta Air Lines Inc.       48110           59.5
+5 American Airlines Inc.     32729           43.9
+6 Envoy Air                  26397           15  
+> # ==== 6-тапсырма. Spark SQL ====
+> DBI::dbGetQuery(sc, "
++   SELECT origin, month, COUNT(*) AS n, ROUND(AVG(dep_delay), 2) AS dep_delay
++   FROM flights WHERE dep_delay IS NOT NULL
++   GROUP BY origin, month ORDER BY dep_delay DESC LIMIT 6")
+  origin month     n dep_delay
+1    JFK     7  9812     23.77
+2    EWR     6  9798     22.47
+3    EWR     7 10196     22.04
+4    EWR    12  9445     21.03
+5    JFK     6  9229     20.50
+6    LGA     6  8207     19.30
+> # ==== 7-тапсырма. Spark-та жаңа баған және кэш ====
+> fl2 <- flights_tbl %>%
++   filter(!is.na(arr_delay), !is.na(dep_delay), !is.na(distance)) %>%
++   mutate(late = ifelse(arr_delay > 15, 1, 0),
++          speed = distance / air_time * 60) %>%
++   sdf_register("flights_clean")
+> tbl_cache(sc, "flights_clean")
+> sdf_nrow(fl2)
+[1] 327346
+> fl2 %>% summarise(late_share = mean(late), avg_speed = mean(speed, na.rm = TRUE)) %>% collect()
+Warning: Missing values are always removed in SQL aggregation functions.
+Use `na.rm = TRUE` to silence this warning
+This warning is displayed once every 8 hours.
+# A tibble: 1 × 2
+  late_share avg_speed
+       <dbl>     <dbl>
+1      0.237      394.
+> # ==== 8-тапсырма. Spark MLlib: сызықтық регрессия ====
+> parts <- sdf_random_split(fl2, train = 0.8, test = 0.2, seed = 13)
+> lm_model <- ml_linear_regression(parts$train, arr_delay ~ dep_delay + distance + hour)
+> lm_model
+Formula: arr_delay ~ dep_delay + distance + hour
+
+Coefficients:
+ (Intercept)    dep_delay     distance         hour 
+-2.039573853  1.019850177 -0.002570595 -0.090749622 
+> summary(lm_model)
+Deviance Residuals (approximate):
+     Min       1Q   Median       3Q      Max 
+-108.156  -10.989   -1.998    8.654  187.194 
+
+Coefficients:
+ (Intercept)    dep_delay     distance         hour 
+-2.039573853  1.019850177 -0.002570595 -0.090749622 
+
+R-Squared: 0.8392
+Root Mean Squared Error: 17.91
+> pred <- ml_predict(lm_model, parts$test)
+> ml_regression_evaluator(pred, label_col = "arr_delay", metric_name = "rmse")
+[1] 17.98231
+> ml_regression_evaluator(pred, label_col = "arr_delay", metric_name = "r2")
+[1] 0.8368334
+> # ==== 9-тапсырма. Spark MLlib: логистикалық регрессия ====
+> log_model <- ml_logistic_regression(parts$train, late ~ dep_delay + distance + hour + month)
+> pred2 <- ml_predict(log_model, parts$test)
+> ml_binary_classification_evaluator(pred2, label_col = "late", metric_name = "areaUnderROC")
+[1] 0.9009909
+> pred2 %>% group_by(late, prediction) %>% summarise(n = n()) %>% collect() %>% arrange(late, prediction)
+! Grouped output by "late".
+ℹ Override behaviour and silence this message with the `.groups` argument.
+ℹ Or use `.by` instead of `group_by()`.
+# A tibble: 4 × 3
+   late prediction     n
+  <dbl>      <dbl> <dbl>
+1     0          0 48489
+2     0          1  1349
+3     1          0  5154
+4     1          1 10491
+> # ==== 10-тапсырма. Нәтижені R-ге алып визуализациялау ====
+> by_hour <- fl2 %>% group_by(hour) %>%
++   summarise(late_share = mean(late), n = n()) %>%
++   collect() %>% arrange(hour)
+> by_hour
+# A tibble: 19 × 3
+    hour late_share     n
+   <dbl>      <dbl> <dbl>
+ 1     5     0.0995  1940
+ 2     6     0.113  25447
+ 3     7     0.114  22475
+ 4     8     0.157  26734
+ 5     9     0.164  19931
+ 6    10     0.177  16370
+ 7    11     0.178  15689
+ 8    12     0.199  17744
+ 9    13     0.229  19457
+10    14     0.257  21022
+11    15     0.295  23082
+12    16     0.294  22045
+13    17     0.326  23667
+14    18     0.326  21072
+15    19     0.341  20507
+16    20     0.347  16061
+17    21     0.366  10503
+18    22     0.331   2558
+19    23     0.296   1042
+> p <- ggplot(by_hour, aes(hour, late_share * 100)) +
++   geom_col(fill = "#0F6E6B") +
++   labs(title = "Spark-та есептелген: сағат бойынша кешіккен рейс үлесі",
++        x = "Ұшу сағаты", y = "Кешіккен рейс, %") +
++   theme_minimal()
+> ggsave("screenshots/01_spark_by_hour.png", p, width = 7, height = 4.5, dpi = 110)
+> spark_disconnect(sc)

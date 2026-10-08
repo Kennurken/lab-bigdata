@@ -1,0 +1,16 @@
+# Archives and Word reports are deliverables, not source (reports are generated from ЕСЕП.md by tools/)
+*.rar
+*.docx
+
+# Generated databases / runtime artifacts — recreated by the lab scripts
+*.sqlite
+derby.log
+metastore_db/
+spark-warehouse/
+workspace.RData
+.Rhistory
+.RData
+.DS_Store
+
+# Personal identity for generated reports (see tools/student.example.json)
+tools/student.local.json

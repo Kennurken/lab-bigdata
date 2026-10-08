@@ -1,0 +1,131 @@
+> # Зертханалық сабақ №6
+> # Үлкен деректерді статистикалық талдау.
+> # Деректер: nycflights13::flights.
+> 
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(ggplot2)
+> library(nycflights13)
+> dir.create("screenshots", showWarnings = FALSE)
+> fl <- flights %>% filter(!is.na(arr_delay), !is.na(dep_delay))
+> nrow(fl)
+[1] 327346
+> # ==== 1-тапсырма. Сипаттамалық статистика ====
+> summary(fl$arr_delay)
+    Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+ -86.000  -17.000   -5.000    6.895   14.000 1272.000 
+> x <- fl$arr_delay
+> stats_tbl <- data.frame(
++   көрсеткіш = c("орта мән", "медиана", "мода", "стандартты ауытқу", "дисперсия",
++                 "ең кіші", "ең үлкен", "құлаш", "IQR", "вариация коэф., %"),
++   мәні = round(c(mean(x), median(x), as.numeric(names(which.max(table(x)))), sd(x), var(x),
++                  min(x), max(x), diff(range(x)), IQR(x), 100 * sd(x) / abs(mean(x))), 2)
++ )
+> stats_tbl
+           көрсеткіш    мәні
+1           орта мән    6.90
+2            медиана   -5.00
+3               мода  -13.00
+4  стандартты ауытқу   44.63
+5          дисперсия 1992.13
+6            ең кіші  -86.00
+7           ең үлкен 1272.00
+8              құлаш 1358.00
+9                IQR   31.00
+10 вариация коэф., %  647.29
+> # ==== 2-тапсырма. Квантильдер ====
+> quantile(x, c(0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99))
+ 1%  5% 10% 25% 50% 75% 90% 95% 99% 
+-44 -32 -26 -17  -5  14  52  91 190 
+> # ==== 3-тапсырма. Асимметрия және эксцесс ====
+> skew <- mean((x - mean(x))^3) / sd(x)^3
+> kurt <- mean((x - mean(x))^4) / sd(x)^4 - 3
+> round(c(skewness = skew, excess_kurtosis = kurt), 3)
+       skewness excess_kurtosis 
+          3.717          29.232 
+> # ==== 4-тапсырма. Топтар бойынша статистика ====
+> fl %>%
++   group_by(origin) %>%
++   summarise(n = n(), mean = round(mean(arr_delay), 2), median = median(arr_delay),
++             sd = round(sd(arr_delay), 2), q90 = quantile(arr_delay, 0.9), .groups = "drop")
+# A tibble: 3 × 6
+  origin      n  mean median    sd   q90
+  <chr>   <int> <dbl>  <dbl> <dbl> <dbl>
+1 EWR    117127  9.11     -4  45.5    58
+2 JFK    109079  5.55     -6  44.3    50
+3 LGA    101140  5.78     -5  43.9    47
+> # ==== 5-тапсырма. Жиілік кестесі ====
+> fl <- fl %>% mutate(delay_class = cut(arr_delay, c(-Inf, 0, 15, 60, 180, Inf),
++   labels = c("ертерек/уақытында", "0-15 мин", "15-60 мин", "1-3 сағ", "3 сағ+")))
+> freq <- table(fl$delay_class)
+> cbind(саны = freq, үлесі_пайыз = round(100 * prop.table(freq), 2))
+                    саны үлесі_пайыз
+ертерек/уақытында 194342       59.37
+0-15 мин           55374       16.92
+15-60 мин          49841       15.23
+1-3 сағ            23946        7.32
+3 сағ+              3843        1.17
+> # ==== 6-тапсырма. Гипотезаны тексеру: t-тест (JFK vs LGA) ====
+> jfk <- fl$arr_delay[fl$origin == "JFK"]
+> lga <- fl$arr_delay[fl$origin == "LGA"]
+> t.test(jfk, lga)
+
+	Welch Two Sample t-test
+
+data:  jfk and lga
+t = -1.2062, df = 209301, p-value = 0.2277
+alternative hypothesis: true difference in means is not equal to 0
+95 percent confidence interval:
+ -0.6089919  0.1449775
+sample estimates:
+mean of x mean of y 
+ 5.551481  5.783488 
+
+> # ==== 7-тапсырма. Хи-квадрат тесті: әуежай және кешігу ====
+> tab <- table(fl$origin, fl$arr_delay > 15)
+> tab
+     
+      FALSE  TRUE
+  EWR 87157 29970
+  JFK 84029 25050
+  LGA 78530 22610
+> chisq.test(tab)
+
+	Pearson's Chi-squared test
+
+data:  tab
+X-squared = 364.33, df = 2, p-value < 2.2e-16
+
+> # ==== 8-тапсырма. Сенімділік аралығы (bootstrap) ====
+> set.seed(6)
+> boot_means <- replicate(2000, mean(sample(x, 5000, replace = TRUE)))
+> round(quantile(boot_means, c(0.025, 0.975)), 3)
+ 2.5% 97.5% 
+5.696 8.213 
+> round(mean(x) + c(-1, 1) * 1.96 * sd(x) / sqrt(length(x)), 3)
+[1] 6.742 7.048
+> # ==== 9-тапсырма. Үлестірімді визуализациялау ====
+> p1 <- ggplot(fl %>% filter(arr_delay < 200), aes(arr_delay)) +
++   geom_histogram(binwidth = 5, fill = "#0F6E6B", colour = "white") +
++   geom_vline(xintercept = mean(x), colour = "#C45C26", linewidth = 1) +
++   geom_vline(xintercept = median(x), colour = "#1C2430", linetype = 2, linewidth = 1) +
++   labs(title = "Келу кешігуінің үлестірімі",
++        subtitle = "Қызыл — орта мән, қара үзік — медиана",
++        x = "Кешігу, мин", y = "Рейс саны") +
++   theme_minimal()
+> ggsave("screenshots/01_histogram.png", p1, width = 8, height = 4.5, dpi = 110)
+> p2 <- ggplot(fl %>% filter(arr_delay < 200), aes(origin, arr_delay, fill = origin)) +
++   geom_boxplot(outlier.alpha = 0.05, show.legend = FALSE) +
++   labs(title = "Әуежайлар бойынша кешігу", x = "Әуежай", y = "Кешігу, мин") +
++   theme_minimal()
+> ggsave("screenshots/02_boxplot.png", p2, width = 6, height = 4.5, dpi = 110)

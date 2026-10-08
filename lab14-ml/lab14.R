@@ -1,0 +1,119 @@
+# Зертханалық сабақ №14
+# R көмегімен үлкен деректерге машиналық оқыту әдістерін қолдану.
+# Міндет: рейстің 15 минуттан артық кешігуін болжау (классификация)
+# және әуежайларды кластерлеу (k-means).
+
+library(dplyr)
+library(ggplot2)
+library(rpart)
+library(randomForest)
+library(nycflights13)
+
+dir.create("screenshots", showWarnings = FALSE)
+set.seed(14)
+
+# ==== 1-тапсырма. Деректерді дайындау (feature engineering) ====
+df <- flights %>%
+  inner_join(weather, by = c("origin", "time_hour")) %>%
+  filter(!is.na(arr_delay), !is.na(dep_delay), !is.na(temp), !is.na(wind_speed),
+         !is.na(visib), !is.na(precip)) %>%
+  transmute(late = factor(ifelse(arr_delay > 15, "кешікті", "уақытында"),
+                          levels = c("уақытында", "кешікті")),
+            dep_delay, hour = hour.x, month = month.x, distance,
+            wday = as.integer(format(time_hour, "%u")),
+            temp, wind_speed, visib, precip,
+            origin = factor(origin), carrier = factor(carrier))
+dim(df)
+prop.table(table(df$late))
+
+# ==== 2-тапсырма. Оқыту және тест жиындарына бөлу ====
+idx <- sample(nrow(df), 0.8 * nrow(df))
+train <- df[idx, ]
+test <- df[-idx, ]
+c(train = nrow(train), test = nrow(test))
+
+metrics <- function(pred, truth, name) {
+  cm <- table(болжам = pred, нақты = truth)
+  tp <- cm["кешікті", "кешікті"]; tn <- cm["уақытында", "уақытында"]
+  fp <- cm["кешікті", "уақытында"]; fn <- cm["уақытында", "кешікті"]
+  data.frame(model = name,
+             accuracy = round((tp + tn) / sum(cm), 4),
+             precision = round(tp / (tp + fp), 4),
+             recall = round(tp / (tp + fn), 4),
+             F1 = round(2 * tp / (2 * tp + fp + fn), 4))
+}
+
+# ==== 3-тапсырма. Базалық модель ====
+base_pred <- factor(rep("уақытында", nrow(test)), levels = levels(df$late))
+mean(base_pred == test$late)
+
+# ==== 4-тапсырма. Логистикалық регрессия ====
+glm_m <- glm(late ~ dep_delay + hour + month + distance + temp + wind_speed + visib + precip + origin,
+             data = train, family = binomial)
+summary(glm_m)$coefficients[, c(1, 4)] %>% round(4)
+glm_prob <- predict(glm_m, test, type = "response")
+glm_pred <- factor(ifelse(glm_prob > 0.5, "кешікті", "уақытында"), levels = levels(df$late))
+table(болжам = glm_pred, нақты = test$late)
+
+# ==== 5-тапсырма. Шешімдер ағашы (rpart) ====
+tree <- rpart(late ~ ., data = train, method = "class", control = rpart.control(cp = 0.0004, maxdepth = 4))
+printcp(tree)
+tree_pred <- predict(tree, test, type = "class")
+png("screenshots/01_tree.png", width = 1200, height = 750, res = 120)
+plot(tree, uniform = TRUE, margin = 0.05, main = "Кешігуді болжайтын шешімдер ағашы")
+text(tree, use.n = FALSE, cex = 0.75, pretty = 0)
+dev.off()
+
+# ==== 6-тапсырма. Кездейсоқ орман (randomForest) ====
+train_rf <- train[sample(nrow(train), 60000), ]
+t_rf <- system.time(
+  rf <- randomForest(late ~ ., data = train_rf, ntree = 150, mtry = 4, importance = TRUE)
+)[["elapsed"]]
+t_rf
+rf
+rf_pred <- predict(rf, test)
+
+# ==== 7-тапсырма. Модельдерді салыстыру ====
+results <- rbind(
+  metrics(glm_pred, test$late, "Логистикалық регрессия"),
+  metrics(tree_pred, test$late, "Шешімдер ағашы"),
+  metrics(rf_pred, test$late, "Кездейсоқ орман")
+)
+results
+
+# ==== 8-тапсырма. Белгілердің маңыздылығы ====
+imp <- importance(rf)[, "MeanDecreaseGini"]
+imp <- sort(imp, decreasing = TRUE)
+round(imp, 1)
+p1 <- ggplot(data.frame(feature = names(imp), value = imp),
+             aes(reorder(feature, value), value)) +
+  geom_col(fill = "#0F6E6B") + coord_flip() +
+  labs(title = "Кездейсоқ орман: белгілердің маңыздылығы", x = NULL, y = "Mean Decrease Gini") +
+  theme_minimal()
+ggsave("screenshots/02_importance.png", p1, width = 7, height = 4.5, dpi = 110)
+
+# ==== 9-тапсырма. Кешігусіз ақпаратпен модель (dep_delay жоқ) ====
+rf2 <- randomForest(late ~ . - dep_delay, data = train_rf, ntree = 150, mtry = 3)
+metrics(predict(rf2, test), test$late, "Кездейсоқ орман, dep_delay-сіз")
+
+# ==== 10-тапсырма. Оқытусыз оқыту: бағыттарды k-means арқылы кластерлеу ====
+dest_feat <- flights %>%
+  filter(!is.na(arr_delay)) %>%
+  group_by(dest) %>%
+  summarise(n = n(), distance = mean(distance), delay = mean(arr_delay),
+            late = mean(arr_delay > 15), .groups = "drop") %>%
+  filter(n > 300)
+X <- scale(dest_feat[, c("distance", "delay", "late", "n")])
+wss <- sapply(1:8, function(k) kmeans(X, k, nstart = 20)$tot.withinss)
+round(wss, 1)
+km <- kmeans(X, centers = 4, nstart = 25)
+dest_feat$cluster <- factor(km$cluster)
+dest_feat %>% group_by(cluster) %>%
+  summarise(destinations = n(), distance = round(mean(distance)), delay = round(mean(delay), 1),
+            late_pct = round(100 * mean(late), 1), .groups = "drop")
+p2 <- ggplot(dest_feat, aes(distance, delay, colour = cluster, size = n)) +
+  geom_point(alpha = 0.8) +
+  labs(title = "Бағыттардың кластерлері (k-means, k = 4)",
+       x = "Орташа қашықтық, миль", y = "Орташа кешігу, мин", colour = "Кластер", size = "Рейс") +
+  theme_minimal()
+ggsave("screenshots/03_kmeans.png", p2, width = 7, height = 4.5, dpi = 110)

@@ -1,0 +1,178 @@
+> # Зертханалық сабақ №5
+> # dplyr көмегімен деректерді сүзу, сұрыптау және топтау.
+> # Деректер: nycflights13::flights (336 776 рейс, Нью-Йорк, 2013).
+> 
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(nycflights13)
+> # ==== 1-тапсырма. Деректермен танысу ====
+> dim(flights)
+[1] 336776     19
+> glimpse(flights)
+Rows: 336,776
+Columns: 19
+$ year           <int> 2013, 2013, 2013, 2013, 2013, 2013, 2013, 2013, 2013, 2013, 2013, 2013, 201…
+$ month          <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
+$ day            <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, …
+$ dep_time       <int> 517, 533, 542, 544, 554, 554, 555, 557, 557, 558, 558, 558, 558, 558, 559, …
+$ sched_dep_time <int> 515, 529, 540, 545, 600, 558, 600, 600, 600, 600, 600, 600, 600, 600, 600, …
+$ dep_delay      <dbl> 2, 4, 2, -1, -6, -4, -5, -3, -3, -2, -2, -2, -2, -2, -1, 0, -1, 0, 0, 1, -8…
+$ arr_time       <int> 830, 850, 923, 1004, 812, 740, 913, 709, 838, 753, 849, 853, 924, 923, 941,…
+$ sched_arr_time <int> 819, 830, 850, 1022, 837, 728, 854, 723, 846, 745, 851, 856, 917, 937, 910,…
+$ arr_delay      <dbl> 11, 20, 33, -18, -25, 12, 19, -14, -8, 8, -2, -3, 7, -14, 31, -4, -8, -7, 1…
+$ carrier        <chr> "UA", "UA", "AA", "B6", "DL", "UA", "B6", "EV", "B6", "AA", "B6", "B6", "UA…
+$ flight         <int> 1545, 1714, 1141, 725, 461, 1696, 507, 5708, 79, 301, 49, 71, 194, 1124, 70…
+$ tailnum        <chr> "N14228", "N24211", "N619AA", "N804JB", "N668DN", "N39463", "N516JB", "N829…
+$ origin         <chr> "EWR", "LGA", "JFK", "JFK", "LGA", "EWR", "EWR", "LGA", "JFK", "LGA", "JFK"…
+$ dest           <chr> "IAH", "IAH", "MIA", "BQN", "ATL", "ORD", "FLL", "IAD", "MCO", "ORD", "PBI"…
+$ air_time       <dbl> 227, 227, 160, 183, 116, 150, 158, 53, 140, 138, 149, 158, 345, 361, 257, 4…
+$ distance       <dbl> 1400, 1416, 1089, 1576, 762, 719, 1065, 229, 944, 733, 1028, 1005, 2475, 25…
+$ hour           <dbl> 5, 5, 5, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, …
+$ minute         <dbl> 15, 29, 40, 45, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59, 0, 0, 0, 0, 10, 5, 10…
+$ time_hour      <dttm> 2013-01-01 05:00:00, 2013-01-01 05:00:00, 2013-01-01 05:00:00, 2013-01-01 …
+> # ==== 2-тапсырма. select(): бағандарды таңдау ====
+> flights %>% select(year, month, day, carrier, origin, dest, dep_delay, arr_delay) %>% head()
+# A tibble: 6 × 8
+   year month   day carrier origin dest  dep_delay arr_delay
+  <int> <int> <int> <chr>   <chr>  <chr>     <dbl>     <dbl>
+1  2013     1     1 UA      EWR    IAH           2        11
+2  2013     1     1 UA      LGA    IAH           4        20
+3  2013     1     1 AA      JFK    MIA           2        33
+4  2013     1     1 B6      JFK    BQN          -1       -18
+5  2013     1     1 DL      LGA    ATL          -6       -25
+6  2013     1     1 UA      EWR    ORD          -4        12
+> flights %>% select(starts_with("dep"), ends_with("delay")) %>% head(3)
+# A tibble: 3 × 3
+  dep_time dep_delay arr_delay
+     <int>     <dbl>     <dbl>
+1      517         2        11
+2      533         4        20
+3      542         2        33
+> # ==== 3-тапсырма. filter(): жолдарды сүзу ====
+> jan_jfk <- flights %>% filter(month == 1, origin == "JFK")
+> nrow(jan_jfk)
+[1] 9161
+> long_delay <- flights %>% filter(arr_delay > 120)
+> nrow(long_delay)
+[1] 10034
+> flights %>% filter(dest %in% c("LAX", "SFO", "SEA"), !is.na(arr_delay)) %>% nrow()
+[1] 33084
+> # ==== 4-тапсырма. arrange(): сұрыптау ====
+> flights %>% arrange(desc(dep_delay)) %>%
++   select(month, day, carrier, flight, origin, dest, dep_delay) %>% head(5)
+# A tibble: 5 × 7
+  month   day carrier flight origin dest  dep_delay
+  <int> <int> <chr>    <int> <chr>  <chr>     <dbl>
+1     1     9 HA          51 JFK    HNL        1301
+2     6    15 MQ        3535 JFK    CMH        1137
+3     1    10 MQ        3695 EWR    ORD        1126
+4     9    20 AA         177 JFK    SFO        1014
+5     7    22 MQ        3075 JFK    CVG        1005
+> flights %>% arrange(month, day, dep_time) %>% select(month, day, dep_time, carrier) %>% head(3)
+# A tibble: 3 × 4
+  month   day dep_time carrier
+  <int> <int>    <int> <chr>  
+1     1     1      517 UA     
+2     1     1      533 UA     
+3     1     1      542 AA     
+> # ==== 5-тапсырма. mutate(): жаңа бағандар ====
+> fl <- flights %>%
++   filter(!is.na(air_time), air_time > 0) %>%
++   mutate(speed_kmh = round(distance * 1.609 / (air_time / 60)),
++          gain = dep_delay - arr_delay,
++          late = arr_delay > 15)
+> fl %>% select(carrier, distance, air_time, speed_kmh, gain, late) %>% head()
+# A tibble: 6 × 6
+  carrier distance air_time speed_kmh  gain late 
+  <chr>      <dbl>    <dbl>     <dbl> <dbl> <lgl>
+1 UA          1400      227       595    -9 FALSE
+2 UA          1416      227       602   -16 TRUE 
+3 AA          1089      160       657   -31 TRUE 
+4 B6          1576      183       831    17 FALSE
+5 DL           762      116       634    19 FALSE
+6 UA           719      150       463   -16 FALSE
+> # ==== 6-тапсырма. group_by() + summarise(): топтау ====
+> by_carrier <- fl %>%
++   group_by(carrier) %>%
++   summarise(flights = n(),
++             mean_arr_delay = round(mean(arr_delay, na.rm = TRUE), 1),
++             late_share = round(100 * mean(late, na.rm = TRUE), 1),
++             .groups = "drop") %>%
++   left_join(airlines, by = "carrier") %>%
++   arrange(desc(mean_arr_delay))
+> print(by_carrier, n = 20)
+# A tibble: 16 × 5
+   carrier flights mean_arr_delay late_share name                       
+   <chr>     <int>          <dbl>      <dbl> <chr>                      
+ 1 F9          681           21.9       37.3 Frontier Airlines Inc.     
+ 2 FL         3175           20.1       33.5 AirTran Airways Corporation
+ 3 EV        51108           15.8       31.4 ExpressJet Airlines Inc.   
+ 4 YV          544           15.6       31.4 Mesa Airlines Inc.         
+ 5 OO           29           11.9       24.1 SkyWest Airlines Inc.      
+ 6 MQ        25037           10.8       27.1 Envoy Air                  
+ 7 WN        12044            9.6       24.9 Southwest Airlines Co.     
+ 8 B6        54049            9.5       26.1 JetBlue Airways            
+ 9 9E        17294            7.4       24.9 Endeavor Air Inc.          
+10 UA        57782            3.6       21.8 United Air Lines Inc.      
+11 US        19831            2.1       17.9 US Airways Inc.            
+12 VX         5116            1.8       18.1 Virgin America             
+13 DL        47658            1.6       18.2 Delta Air Lines Inc.       
+14 AA        31947            0.4       18.8 American Airlines Inc.     
+15 HA          342           -6.9       12.6 Hawaiian Airlines Inc.     
+16 AS          709           -9.9       14.4 Alaska Airlines Inc.       
+> # ==== 7-тапсырма. Әуежай және ай бойынша топтау ====
+> flights %>%
++   group_by(origin, month) %>%
++   summarise(n = n(), dep_delay = round(mean(dep_delay, na.rm = TRUE), 1), .groups = "drop") %>%
++   arrange(desc(dep_delay)) %>% head(6)
+# A tibble: 6 × 4
+  origin month     n dep_delay
+  <chr>  <int> <int>     <dbl>
+1 JFK        7 10023      23.8
+2 EWR        6 10175      22.5
+3 EWR        7 10475      22  
+4 EWR       12  9922      21  
+5 JFK        6  9472      20.5
+6 LGA        6  8596      19.3
+> # ==== 8-тапсырма. Ең көп ұшатын бағыттар ====
+> flights %>% count(origin, dest, sort = TRUE) %>%
++   left_join(airports %>% select(faa, name), by = c("dest" = "faa")) %>% head(10)
+# A tibble: 10 × 4
+   origin dest      n name                              
+   <chr>  <chr> <int> <chr>                             
+ 1 JFK    LAX   11262 Los Angeles Intl                  
+ 2 LGA    ATL   10263 Hartsfield Jackson Atlanta Intl   
+ 3 LGA    ORD    8857 Chicago Ohare Intl                
+ 4 JFK    SFO    8204 San Francisco Intl                
+ 5 LGA    CLT    6168 Charlotte Douglas Intl            
+ 6 EWR    ORD    6100 Chicago Ohare Intl                
+ 7 JFK    BOS    5898 General Edward Lawrence Logan Intl
+ 8 LGA    MIA    5781 Miami Intl                        
+ 9 JFK    MCO    5464 Orlando Intl                      
+10 EWR    BOS    5327 General Edward Lawrence Logan Intl
+> # ==== 9-тапсырма. Біріктіру (join) және тізбек ====
+> flights %>%
++   filter(!is.na(arr_delay)) %>%
++   inner_join(planes %>% select(tailnum, plane_year = year), by = "tailnum") %>%
++   mutate(age_group = cut(2013 - plane_year, c(-Inf, 5, 10, 20, Inf),
++                          labels = c("0-5 жыл", "6-10 жыл", "11-20 жыл", "20+ жыл"))) %>%
++   group_by(age_group) %>%
++   summarise(n = n(), mean_delay = round(mean(arr_delay), 2), .groups = "drop")
+# A tibble: 5 × 3
+  age_group      n mean_delay
+  <fct>      <int>      <dbl>
+1 0-5 жыл    45889       4.88
+2 6-10 жыл   72056       9.41
+3 11-20 жыл 122230       7.31
+4 20+ жыл    33678       3.9 
+5 <NA>        5164       7.82
