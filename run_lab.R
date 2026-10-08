@@ -12,7 +12,8 @@ sink("output.txt", split = FALSE)
 sink(stdout(), type = "message")
 options(width = 100, warn = 1)
 res <- try(source(script, echo = TRUE, max.deparse.length = Inf, keep.source = TRUE,
-                  prompt.echo = "> ", spaced = FALSE, encoding = "UTF-8"))
+                  prompt.echo = "> ", spaced = FALSE, encoding = "UTF-8"),
+           outFile = stdout())  # қате мәтіні де output.txt-ке түседі
 sink(type = "message"); sink()
 setwd(root)
 cat(args[1], ": ", if (inherits(res, "try-error")) "FAILED" else "OK",

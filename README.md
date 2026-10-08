@@ -83,7 +83,9 @@ spark_install(version = "3.5")      # скачивает Spark 3.5.x (~400 МБ)
 spark_installed_versions()
 ```
 
-> На Windows Spark иногда просит `winutils.exe` / `HADOOP_HOME`. `sparklyr::spark_install()` обычно ставит нужное сам; если видишь ошибку про `winutils` — задай `HADOOP_HOME` на каталог с `bin\winutils.exe` для Hadoop 3. Этот сценарий **не проверялся**.
+> **Windows:** Spark требует **Microsoft Visual C++ 2010 SP1 Redistributable (x64)** — https://www.microsoft.com/en-us/download/details.aspx?id=26999 (или `choco install vcredist2010`). Без него `spark_connect()` падает с ошибкой про «Visual C++ 2010 SP1». Это подтверждено в CI. Дальше перезапусти R.
+>
+> Иногда ещё просит `winutils.exe` / `HADOOP_HOME`. `sparklyr::spark_install()` обычно ставит нужное сам; если видишь ошибку про `winutils` — задай `HADOOP_HOME` на каталог с `bin\winutils.exe` для Hadoop 3. Этот сценарий **не проверялся**.
 
 ### MongoDB (лаба 10)
 

@@ -33,6 +33,11 @@ jobs:
 
       - uses: ankane/setup-mongodb@v1
 
+      # Spark on Windows needs the VC++ 2010 SP1 runtime (winutils depends on msvcr100.dll).
+      - name: Install VC++ 2010 runtime (Windows, lab 13)
+        if: runner.os == 'Windows'
+        run: choco install vcredist2010 -y --no-progress
+
       - name: Install Spark 3.5 (lab 13)
         shell: Rscript {0}
         run: sparklyr::spark_install(version = "3.5")
